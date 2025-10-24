@@ -2,28 +2,36 @@ import subprocess
 
 def add_animated_watermark(input_file, logo_path, output_file):
     """
-    اضافه کردن لوگو + متن SeriesPlus1 به ویدیو
-    متن هر 5 ثانیه تکرار می‌شود (از راست می‌آید و داخل لوگو محو می‌شود)
+    اضافه کردن واترمارک PNG با انیمیشن Fade و Pulsing به ویدیو.
     """
-    # مثال ساده، متن پایین و گوشه راست
-    text_filter = (
-        "drawtext=text='SeriesPlus1':"
-        "fontcolor=white:fontsize=36:x=w-tw-10*t:y=h-60:"
-        "enable='between(mod(t\,10)\,0\,5)',"
-        "drawtext=text='SeriesPlus1':"
-        "fontcolor=white:fontsize=36:x=-tw+10*t:y=h-60:"
-        "enable='between(mod(t\,10)\,5\,10)'"
-    )
+    
+    # --- پارامترهای انیمیشن ---
+    fade_in_dur = 1  # مدت زمان ورود محوشونده (ثانیه)
+    # شروع خروج محوشونده (ثانیه) - بهتر است این مقدار را به طول ویدیو وابسته کنید!
+    # اگر ویدیو کوتاه باشد، ممکن است زودتر از موعد ناپدید شود.
+    fade_out_start = 5 
+    fade_out_dur = 1   # مدت زمان خروج محوشونده (ثانیه)
 
-    # ffmpeg اجرا می‌شود و فایل خروجی تولید می‌شود
+    # --- فیلتر FFmpeg با انیمیشن‌های ترکیبی ---
+    filter_complex = f"""
+    [1]format=rgba,
+    fade=t=in:st=0:d={fade_in_dur}:alpha=1,
+    fade=t=out:st={fade_out_start}:d={fade_out_dur}:alpha=1,
+    scale='iw*(1+0.1*sin(2*PI*t/3))':'ih*(1+0.1*sin(2*PI*t/3))'[wm];
+    [0][wm]overlay=W-w-40:H-h-40:format=auto
+    """
+
     cmd = [
         "ffmpeg",
         "-i", input_file,
         "-i", logo_path,
-        "-filter_complex",
-        f"[1:v]scale=100:-1[logo];[0:v][logo]overlay=10:10,{text_filter}",
+        "-filter_complex", filter_complex,
         "-c:a", "copy",
+        # اضافه کردن pix_fmt برای سازگاری بهتر با برخی پلیرها/تلگرام
+        "-pix_fmt", "yuv420p", 
         output_file,
-        "-y"
+        "-y" # بازنویسی فایل خروجی در صورت وجود
     ]
+    
+    # اجرا و بررسی خطا
     subprocess.run(cmd, check=True)
