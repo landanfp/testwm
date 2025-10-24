@@ -2,9 +2,9 @@ from pyrogram import Client, filters
 from watermark import add_animated_watermark
 import os
 
-API_ID = 123456        # از my.telegram.org بگیر
-API_HASH = "your_api_hash"
-BOT_TOKEN = "your_bot_token"
+API_ID = '3335796'
+API_HASH = '138b992a0e672e8346d8439c3f42ea78'
+BOT_TOKEN = '5355055672:AAHoidc0x6nM3g2JHmb7xhWKmwGJOoKFNXY'
 
 app = Client("watermark-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
