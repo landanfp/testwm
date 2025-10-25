@@ -1,28 +1,29 @@
-# استفاده از ایمیج پایه جدیدتر Debian 12 (Bookworm)
-FROM python:3.11-slim-bookworm
+FROM python:3.9-slim
 
-# ۱. فعال کردن مخازن contrib و non-free
-# این کار به apt اجازه می‌دهد پکیج‌هایی مانند libx264 را پیدا کند.
-RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free" > /etc/apt/sources.list.d/bookworm.list && \
-    echo "deb http://deb.debian.org/debian-security bookworm-security main contrib non-free" >> /etc/apt/sources.list.d/bookworm.list && \
-    echo "deb http://deb.debian.org/debian bookworm-updates main contrib non-free" >> /etc/apt/sources.list.d/bookworm.list
+# نصب ابزارهای مورد نیاز
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    imagemagick \
+    libx11-6 \
+    libxext6 \
+    libsm6 \
+    && rm -rf /var/lib/apt/lists/*
 
-# ۲. نصب FFmpeg و انکودر libx264
-# apt-get update باید دوباره اجرا شود تا مخازن جدید بارگذاری شوند.
-RUN apt-get update && \
-    apt-get install -y ffmpeg libx264 && \
-    rm -rf /var/lib/apt/lists/*
-
-# تنظیم دایرکتوری کاری درون کانتینر
+# تنظیم مسیر کاری
 WORKDIR /app
 
-# کپی کردن فایل‌های مورد نیاز
-COPY requirements.txt .
+# کپی پروژه داخل کانتینر
+COPY . /app
+
+# نصب MoviePy و پکیج‌های مورد نیازش
+RUN pip install --upgrade pip
+RUN pip install moviepy==1.0.3 imageio-ffmpeg==0.4.5
+
+# نصب سایر وابستگی‌ها
 RUN pip install --no-cache-dir -r requirements.txt
 
-# کپی کردن فایل‌های ربات و واترمارک
-COPY bot.py .
-COPY logo.png .
+# تست نصب moviepy (اختیاری ولی مفیده برای لاگ)
+RUN python -c "from moviepy.editor import VideoFileClip; print('MoviePy installed successfully.')"
 
-# دستور اجرای ربات
+# اجرای برنامه اصلی
 CMD ["python", "bot.py"]
