@@ -1,5 +1,6 @@
 import os
 import subprocess
+import shlex # <-- کتابخانه مورد نیاز برای اجرای امن دستورات Shell
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
@@ -20,6 +21,8 @@ LOGO_DURATION = 4.0    # مدت‌زمان هر نمایش لوگو (به ثان
 FADE_IN_TIME = 1.2     # مدت‌زمان افکت ورودی
 FADE_OUT_TIME = 1.2    # مدت‌زمان افکت خروجی
 
+# ----------------------------------------------------------------------
+
 # --- توابع کمکی ---
 
 def process_video(video_path: str, logo_path: str, output_path: str, duration: float) -> tuple[bool, str]:
@@ -28,14 +31,8 @@ def process_video(video_path: str, logo_path: str, output_path: str, duration: f
     خروجی: (وضعیت موفقیت‌آمیز، پیام خطا/موفقیت)
     """
     
-    # دستور FFmpeg
-    # این دستور لوگو را متحرک کرده (scale + fade) و به طور مداوم تکرار می‌کند.
-    # [1:v] جریان لوگو
-    # scale: انیمیشن بزرگ شدن لوگو در طول زمان LOGO_DURATION (4 ثانیه) با استفاده از تابع mod
-    # fade: اعمال fade in/out بر اساس LOGO_DURATION
-    # [0:v][logo_animated]overlay: ترکیب با ویدیو اصلی در موقعیت 10:10 (گوشه بالا چپ)
-    
-    cmd = f"""
+    # دستور FFmpeg به صورت یک رشته
+    cmd_str = f"""
 ffmpeg -y -i "{video_path}" -i "{logo_path}" -filter_complex "
 # 1. متحرک‌سازی لوگو
 [1:v]
@@ -52,18 +49,25 @@ ffmpeg -y -i "{video_path}" -i "{logo_path}" -filter_complex "
 " -map "[v]" -map 0:a? -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p "{output_path}"
 """
     
+    # استفاده از shlex.split برای تبدیل رشته فرمان به لیست آرگومان‌ها
     try:
-        # اجرای subprocess با check=True برای تولید CalledProcessError در صورت شکست FFmpeg
+        # این کار رشته را به طور ایمن برای اجرای مستقیم آماده می‌کند و مشکلات Shell را حل می‌کند.
+        command_list = shlex.split(cmd_str)
+    except Exception as e:
+        return False, f"خطا در تجزیه دستور shlex: {e}"
+
+    
+    try:
+        # اجرای subprocess بدون shell=True
         result = subprocess.run(
-            cmd, 
-            shell=True, 
+            command_list, 
             check=True, 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE,
-            text=True # برای decode کردن خروجی
+            text=True 
         )
-        return True, result.stderr
-
+        return True, ""
+        
     except subprocess.CalledProcessError as e:
         # اگر FFmpeg با خطا خارج شود، پیام خطا را برمی‌گرداند
         error_message = f"FFmpeg Error (Exit Code {e.returncode}):\n\n{e.stderr}"
@@ -74,6 +78,7 @@ ffmpeg -y -i "{video_path}" -i "{logo_path}" -filter_complex "
         # اگر دستور ffmpeg پیدا نشود
         return False, "خطا: FFmpeg نصب نشده یا در PATH سیستم نیست."
 
+# ----------------------------------------------------------------------
 
 # --- هندلر پیام ---
 
@@ -120,7 +125,6 @@ async def video_handler(client: Client, message: Message):
             
     else:
         # 5. در صورت خطا، پیام خطا را به کاربر نشان می‌دهیم.
-        # پیام خطا را در یک بلاک کد برای خوانایی بهتر قرار می‌دهیم.
         await status_msg.edit(f"❌ پردازش ویدیو با خطا مواجه شد:\n\nجزئیات خطا:\n```bash\n{error_msg[:1000]}\n```")
 
     # 6. پاکسازی فایل‌های موقت
