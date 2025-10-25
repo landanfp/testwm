@@ -1,124 +1,131 @@
 import os
-import subprocess
-import asyncio # برای اجرای غیرهمزمان (Async) دستورات سیستمی
+import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import Message
-from pyrogram.errors import MessageNotModified
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import ffmpeg
+from datetime import timedelta
 
-# تنظیمات ربات
-# ----------------------------------------------------------------------
-
-# **مهم:** جایگزین کردن مقادیر زیر با اطلاعات واقعی خودتان
 API_ID = '3335796'
 API_HASH = '138b992a0e672e8346d8439c3f42ea78'
-BOT_TOKEN = '8189638115:AAEYMDvummCXAPgdpavZbYHa3YuXpOzkRBY'
-#LOG_CHANNEL = -1001792962793  # مقدار دلخواه
-#LOG_CHANNEL = -1001792962793  # مقدار دلخواه
+BOT_TOKEN = '5355055672:AAEE8OIOqLYxbnwesF3ki2sOsXr03Q90JiI'
+LOG_CHANNEL = -1001792962793  # مقدار دلخواه
 
-bot = Client("watermark_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("trim_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# مسیر فایل واترمارک (باید در کنار bot.py باشد)
-WATERMARK_FILE = "logo.png"
+user_state = {}
 
-# مسیرهای موقت برای ویدیوها
-INPUT_VIDEO_PATH = "input_video_{}.mp4"
-OUTPUT_VIDEO_PATH = "output_video_{}.mp4"
+def seconds_to_hms(seconds):
+    return str(timedelta(seconds=seconds))
 
-# ----------------------------------------------------------------------
-# هندلرهای ربات
-# ----------------------------------------------------------------------
+@app.on_message(filters.command("start"))
+async def start(_, message):
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("✂️", callback_data="start_cutting")]]
+    )
+    await message.reply("سلام! برای برش ویدیو روی دکمه زیر کلیک کن:", reply_markup=keyboard)
 
-@bot.on_message(filters.command("start"))
-async def start(client, message):
-    """هندلر دستور /start"""
-    await message.reply_text("سلام! من ربات واترمارک‌زن تو هستم. یک ویدیو برای من بفرست! 🚀")
+@app.on_callback_query()
+async def handle_callback(_, callback_query):
+    user_id = callback_query.from_user.id
 
+    if callback_query.data == "start_cutting":
+        user_state[user_id] = {
+            "step": "awaiting_video"
+        }
+        await callback_query.message.reply("لطفاً ویدیوی موردنظر را ارسال کنید.")
 
-@bot.on_message(filters.video & filters.private)
-async def process_video(client: Client, message: Message):
-    """هندلر برای پردازش ویدیوهای دریافتی و اضافه کردن واترمارک"""
-    
-    # ایجاد یک شناسه منحصر به فرد برای نامگذاری فایل‌ها (برای جلوگیری از تداخل)
-    # از chat_id به عنوان بخشی از نام فایل استفاده می‌کنیم
-    unique_id = message.chat.id
-    input_path = INPUT_VIDEO_PATH.format(unique_id)
-    output_path = OUTPUT_VIDEO_PATH.format(unique_id)
-    
-    # ۱. پیام در حال پردازش را ارسال کنید
-    processing_msg = await message.reply_text("در حال دانلود ویدیو...")
-
-    try:
-        # ۲. ویدیوی ارسالی را دانلود کنید
-        # از client.download_media برای دریافت فایل استفاده می‌کنیم
-        await message.download(file_name=input_path)
-        
-        await processing_msg.edit_text("دانلود با موفقیت انجام شد. در حال اضافه کردن واترمارک... ⏳")
-
-        # ۳. دستور FFmpeg برای اضافه کردن واترمارک
-        # این دستور لوگو را در گوشه پایین سمت راست قرار می‌دهد
-        ffmpeg_command = [
-            "ffmpeg",
-            "-i", input_path,             # ورودی ویدیو (0:v)
-            "-i", WATERMARK_FILE,         # ورودی واترمارک (1:v)
-            "-filter_complex",
-            # فیلتر overlay: لوگو را 10 پیکسل از راست و پایین قرار می‌دهد
-            "[0:v][1:v]overlay=main_w-overlay_w-10:main_h-overlay_h-10[out]",
-            "-map", "[out]",
-            
-            # تنظیمات انکودر برای سازگاری بهتر و کاهش حجم
-            "-c:v", "libx264",       # انکودر ویدیویی (باید در داکر نصب شود)
-            "-crf", "23",            # کیفیت خروجی (23 کیفیت خوبی است)
-            "-preset", "veryfast",   # سرعت انکد
-            
-            "-map", "0:a?",          # کپی کردن استریم صوتی اگر وجود داشته باشد (اختیاری)
-            "-c:a", "copy",
-            output_path              # خروجی ویدیو
-        ]
-
-        # ۴. اجرای دستور FFmpeg
-        # استفاده از asyncio.create_subprocess_exec برای اجرای غیرهمزمان (Async)
-        process = await asyncio.create_subprocess_exec(
-            *ffmpeg_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        
-        if process.returncode != 0:
-            # نمایش 500 کاراکتر اول خطا در صورت ناموفق بودن FFmpeg
-            await processing_msg.edit_text(
-                f"❌ خطایی در اضافه کردن واترمارک رخ داد.\n\n**خطای FFmpeg:**\n`{stderr.decode()[:500]}`"
-            )
+    elif callback_query.data == "cut_now":
+        state = user_state.get(user_id)
+        if not state:
             return
 
-        await processing_msg.edit_text("واترمارک با موفقیت اضافه شد. در حال آپلود... ⬆️")
+        await callback_query.answer("در حال برش...")
 
-        # ۵. ارسال ویدیوی خروجی
-        await client.send_video(
-            chat_id=message.chat.id,
-            video=output_path,
-            caption="✅ اینم ویدیوی شما با واترمارک! @YourBotUsername"
+        # دانلود ویدیو
+        video_msg = await app.get_messages(callback_query.message.chat.id, state["video_msg_id"])
+        temp_input = f"{user_id}_input.mp4"
+        temp_output = f"{user_id}_cut.mp4"
+        await video_msg.download(temp_input)
+
+        start = state["start_time"]
+        end = state["end_time"]
+
+        await callback_query.message.reply("در حال پردازش ویدیو...")
+
+        (
+            ffmpeg
+            .input(temp_input, ss=start, to=end)
+            .output(temp_output)
+            .run(overwrite_output=True)
         )
 
-        await processing_msg.delete() # حذف پیام در حال پردازش
+        await app.send_video(callback_query.message.chat.id, temp_output)
+        await callback_query.message.edit("تمام شد!")
 
-    except MessageNotModified:
-        # در صورتیکه پیام در حال ویرایش تغییر نکرده باشد، از خطا صرفنظر می‌کنیم
-        pass
-    except Exception as e:
-        # مدیریت خطاهای کلی
-        error_message = f"❌ یک خطای غیرمنتظره رخ داد: `{e}`"
-        await client.send_message(message.chat.id, error_message)
+        os.remove(temp_input)
+        os.remove(temp_output)
+        del user_state[user_id]
 
-    finally:
-        # ۶. حذف فایل‌های موقت
-        if os.path.exists(input_path):
-            os.remove(input_path)
-        if os.path.exists(output_path):
-            os.remove(output_path)
-            
-# ----------------------------------------------------------------------
-# اجرای ربات
-# ----------------------------------------------------------------------
-if __name__ == "__main__":
-    bot.run()
+@app.on_message(filters.video)
+async def handle_video(_, message):
+    user_id = message.from_user.id
+
+    if user_id not in user_state or user_state[user_id].get("step") != "awaiting_video":
+        return
+
+    duration = seconds_to_hms(message.video.duration)
+
+    text = (
+        f"⏱ زمان ویدیو: {duration}\n"
+        f"⏳ تایم شروع: {{}}\n"
+        f"⏳ تایم پایان: {{}}"
+    )
+    sent_msg = await message.reply(text)
+
+    user_state[user_id].update({
+        "step": "awaiting_start",
+        "video_msg_id": message.id,
+        "video_edit_msg": sent_msg.id,
+        "duration": duration,
+        "start_time": None,
+        "end_time": None
+    })
+
+    await message.reply("لطفاً تایم شروع را ارسال کنید (hh:mm:ss)")
+
+@app.on_message(filters.text)
+async def handle_time(_, message):
+    user_id = message.from_user.id
+    state = user_state.get(user_id)
+
+    if not state:
+        return
+
+    if state["step"] == "awaiting_start":
+        user_state[user_id]["start_time"] = message.text
+        state["step"] = "awaiting_end"
+
+        video_msg = await message.chat.get_message(state["video_edit_msg"])
+        new_text = (
+            f"⏱ زمان ویدیو: {state['duration']}\n"
+            f"⏳ تایم شروع: {state['start_time']}\n"
+            f"⏳ تایم پایان: {{}}"
+        )
+        await video_msg.edit(new_text)
+        await message.reply("حالا تایم پایان را وارد کنید (hh:mm:ss)")
+
+    elif state["step"] == "awaiting_end":
+        user_state[user_id]["end_time"] = message.text
+        state["step"] = "ready"
+
+        video_msg = await message.chat.get_message(state["video_edit_msg"])
+        new_text = (
+            f"⏱ زمان ویدیو: {state['duration']}\n"
+            f"⏳ تایم شروع: {state['start_time']}\n"
+            f"⏳ تایم پایان: {state['end_time']}"
+        )
+        await video_msg.edit(new_text, reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("شروع برش", callback_data="cut_now")]]
+        ))
+
+app.run()
