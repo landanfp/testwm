@@ -4,10 +4,10 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 # --- تنظیمات ربات ---
-API_ID = '3335796'
-API_HASH = '138b992a0e672e8346d8439c3f42ea78'
-BOT_TOKEN = '5355055672:AAEE8OIOqLYxbnwesF3ki2sOsXr03Q90JiI'
-#LOG_CHANNEL = -1001792962793  # مقدار دلخواه
+API_ID = 1234567  # عدد API_ID خود را وارد کنید
+API_HASH = "your_api_hash_here" # هش API خود را وارد کنید
+BOT_TOKEN = "your_bot_token_here" # توکن ربات خود را وارد کنید
+
 # ساخت کلاینت
 bot = Client("simple_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -16,113 +16,63 @@ bot = Client("simple_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN
 LOGO_PATH = "logo.png"
 
 # تنظیمات افکت لوگو
-LOGO_DURATION = 4      # مدت‌زمان هر نمایش لوگو (به ثانیه)
+LOGO_DURATION = 4.0    # مدت‌زمان هر نمایش لوگو (به ثانیه)
 FADE_IN_TIME = 1.2     # مدت‌زمان افکت ورودی
 FADE_OUT_TIME = 1.2    # مدت‌زمان افکت خروجی
 
 # --- توابع کمکی ---
 
-def generate_logo_filter_string(video_duration: float) -> str:
-    """
-    تولید رشته فیلتر FFmpeg برای متحرک‌سازی و تکرار لوگو
-    """
-    # زمان کل افکت‌ها
-    total_logo_time = LOGO_DURATION
-    
-    # تعداد تکرارها (Loop)
-    num_loops = int(video_duration // total_logo_time) + 1
-
-    # --- تولید فیلتر برای یک چرخه (Loop) ---
-    # این فیلتر یک بار متحرک‌سازی لوگو را انجام می‌دهد.
-    single_logo_filter = f"""
-[1:v]format=rgba,
- scale='iw*(0.6+0.4*(t/{FADE_IN_TIME}))':'ih*(0.6+0.4*(t/{FADE_IN_TIME}))',
- fade=t=in:st=0:d={FADE_IN_TIME}:alpha=1,
- fade=t=out:st={total_logo_time - FADE_OUT_TIME}:d={FADE_OUT_TIME}:alpha=1,
- transform=1,
- setpts=PTS-STARTPTS,
- pad=1920:1080:(ow-iw)/2:(oh-ih)/2
-    """
-    
-    # --- تکرار و ترکیب فیلترها (Looping) ---
-    # از 'loop' در FFmpeg برای ساخت یک جریان طولانی از لوگوی متحرک استفاده می‌کنیم.
-    # این کد کمی پیچیده است و بهتر است از فیلتر 'setpts' برای تکرار استفاده کنیم.
-
-    # یک جریان لوگو می‌سازیم که کل مدت ویدیو را پوشش دهد.
-    logo_stream_filter = ""
-    for i in range(num_loops):
-        start_time = i * total_logo_time
-        # فیلتر کردن برای هر چرخه
-        loop_filter = f"""
-[1:v]setpts=PTS-STARTPTS+{start_time}/TB,
- scale='iw*(0.6+0.4*((t-{start_time})/{FADE_IN_TIME}))':'ih*(0.6+0.4*((t-{start_time})/{FADE_IN_TIME}))',
- fade=t=in:st={start_time}:d={FADE_IN_TIME}:alpha=1,
- fade=t=out:st={start_time + total_logo_time - FADE_OUT_TIME}:d={FADE_OUT_TIME}:alpha=1,
- transform=1,
- pad=1920:1080:(ow-iw)/2:(oh-ih)/2
-"""
-        # اگر اولین حلقه نیست، باید جریان‌ها را با هم ترکیب کنیم.
-        if i == 0:
-            logo_stream_filter = loop_filter
-        else:
-            # ترکیب با جریان قبلی (با استفاده از overlay)
-            # این روش در FFmpeg سخت است و معمولاً از فیلتر 'loop' استفاده می‌شود.
-            # برای ساده‌سازی، فقط یک جریان لوگو می‌سازیم و آن را در نهایت overlay می‌کنیم.
-            pass
-
-    # --- روش ساده‌تر (استفاده از setpts برای تکرار در جریان واحد) ---
-    # یک جریان لوگوی طولانی می‌سازیم
-    logo_long_stream = f"""
-movie={LOGO_PATH}:loop=0,
- setpts=N/{total_logo_time}*({total_logo_time}/(N/FRAME_RATE))/TB,
- scale='iw*(0.6+0.4*mod(t/{total_logo_time},1)*{total_logo_time}/{FADE_IN_TIME})':'ih*(0.6+0.4*mod(t/{total_logo_time},1)*{total_logo_time}/{FADE_IN_TIME})',
- fade=t=in:st=0:d={FADE_IN_TIME}:alpha=1,
- fade=t=out:st={total_logo_time - FADE_OUT_TIME}:d={FADE_OUT_TIME}:alpha=1,
- transform=1
-"""
-
-    return logo_long_stream
-
-
-def process_video(video_path: str, logo_path: str, output_path: str, duration: float) -> bool:
+def process_video(video_path: str, logo_path: str, output_path: str, duration: float) -> tuple[bool, str]:
     """
     اجرای دستور FFmpeg برای ترکیب لوگوی متحرک با ویدیو
+    خروجی: (وضعیت موفقیت‌آمیز، پیام خطا/موفقیت)
     """
     
-    # فیلتر برای متحرک‌سازی و تکرار لوگو
-    logo_filters = generate_logo_filter_string(duration)
-    
     # دستور FFmpeg
-    # [0:v] جریان ویدیو اصلی
-    # [1:v] جریان لوگو (ایجاد شده با فیلتر)
+    # این دستور لوگو را متحرک کرده (scale + fade) و به طور مداوم تکرار می‌کند.
+    # [1:v] جریان لوگو
+    # scale: انیمیشن بزرگ شدن لوگو در طول زمان LOGO_DURATION (4 ثانیه) با استفاده از تابع mod
+    # fade: اعمال fade in/out بر اساس LOGO_DURATION
+    # [0:v][logo_animated]overlay: ترکیب با ویدیو اصلی در موقعیت 10:10 (گوشه بالا چپ)
+    
     cmd = f"""
 ffmpeg -y -i "{video_path}" -i "{logo_path}" -filter_complex "
 # 1. متحرک‌سازی لوگو
 [1:v]
- scale='iw*(0.6+0.4*mod(t,{LOGO_DURATION})/{FADE_IN_TIME})':'ih*(0.6+0.4*mod(t,{LOGO_DURATION})/{FADE_IN_TIME})',
  format=yuva444p,
+ # افکت Scale و بزرگ شدن لوگو در طول 4 ثانیه و تکرار آن با mod(t, 4)
+ scale=w='iw*(0.6+0.4*mod(t,{LOGO_DURATION})/{FADE_IN_TIME})':h='ih*(0.6+0.4*mod(t,{LOGO_DURATION})/{FADE_IN_TIME})',
+ # افکت Fade In و Fade Out (برای لوگو، نه کل ویدیو)
  fade=t=in:st=0:d={FADE_IN_TIME}:alpha=1,
- fade=t=out:st=({duration}-{FADE_OUT_TIME}):d={FADE_OUT_TIME}:alpha=1,
- loop=-1:25:0
+ fade=t=out:st=({duration}-{FADE_OUT_TIME}):d={FADE_OUT_TIME}:alpha=1
 [logo_animated];
 
-# 2. ترکیب لوگو با ویدیو
+# 2. ترکیب لوگو با ویدیو (overlay)
 [0:v][logo_animated]overlay=10:10:shortest=1[v]
 " -map "[v]" -map 0:a? -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p "{output_path}"
 """
     
-    # نکته: فیلتر `loop` برای ویدیوهایی که از فایل‌های تصویری ساخته می‌شوند، پیچیده است.
-    # برای سادگی، در دستور بالا از یک روش ساده‌تر برای متحرک‌سازی و ترکیب استفاده شده است.
-    
     try:
-        subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return True
+        # اجرای subprocess با check=True برای تولید CalledProcessError در صورت شکست FFmpeg
+        result = subprocess.run(
+            cmd, 
+            shell=True, 
+            check=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            text=True # برای decode کردن خروجی
+        )
+        return True, result.stderr
+
     except subprocess.CalledProcessError as e:
-        print(f"خطا در اجرای FFmpeg: {e.stderr.decode()}")
-        return False
+        # اگر FFmpeg با خطا خارج شود، پیام خطا را برمی‌گرداند
+        error_message = f"FFmpeg Error (Exit Code {e.returncode}):\n\n{e.stderr}"
+        print(error_message) # نمایش در کنسول سرور
+        return False, error_message
+        
     except FileNotFoundError:
-        print("خطا: FFmpeg نصب نشده یا در PATH نیست.")
-        return False
+        # اگر دستور ffmpeg پیدا نشود
+        return False, "خطا: FFmpeg نصب نشده یا در PATH سیستم نیست."
 
 
 # --- هندلر پیام ---
@@ -132,8 +82,9 @@ async def video_handler(client: Client, message: Message):
     """
     دریافت ویدیو، افزودن لوگوی متحرک و ارسال مجدد
     """
+    # 0. بررسی وجود لوگو
     if not os.path.exists(LOGO_PATH):
-        await message.reply_text(f"خطا: فایل لوگو `{LOGO_PATH}` پیدا نشد.")
+        await message.reply_text(f"خطا: فایل لوگو `{LOGO_PATH}` پیدا نشد. لطفاً مطمئن شوید فایل لوگو کنار اسکریپت قرار دارد.")
         return
 
     # 1. دانلود فایل ویدیو
@@ -144,16 +95,17 @@ async def video_handler(client: Client, message: Message):
         await status_msg.edit(f"❌ خطا در دانلود: {e}")
         return
 
-    # 2. تعریف مسیر خروجی
+    # 2. تعریف مسیر خروجی و مدت زمان
+    video_duration = message.video.duration
     output_path = input_path + "_with_logo.mp4"
     
     # 3. پردازش ویدیو با FFmpeg
     await status_msg.edit("✨ در حال افزودن لوگوی متحرک (FFmpeg)...")
     
-    # گرفتن مدت‌زمان ویدیو
-    video_duration = message.video.duration
+    # فراخوانی تابع عیب‌یابی شده
+    success, error_msg = process_video(input_path, LOGO_PATH, output_path, video_duration)
     
-    if process_video(input_path, LOGO_PATH, output_path, video_duration):
+    if success:
         # 4. آپلود و ارسال ویدیو
         await status_msg.edit("📤 در حال آپلود ویدیو...")
         try:
@@ -167,9 +119,11 @@ async def video_handler(client: Client, message: Message):
             await status_msg.edit(f"❌ خطا در آپلود: {e}")
             
     else:
-        await status_msg.edit("❌ پردازش ویدیو با خطا مواجه شد. (جزئیات در لاگ سرور)")
+        # 5. در صورت خطا، پیام خطا را به کاربر نشان می‌دهیم.
+        # پیام خطا را در یک بلاک کد برای خوانایی بهتر قرار می‌دهیم.
+        await status_msg.edit(f"❌ پردازش ویدیو با خطا مواجه شد:\n\nجزئیات خطا:\n```bash\n{error_msg[:1000]}\n```")
 
-    # 5. پاکسازی فایل‌های موقت
+    # 6. پاکسازی فایل‌های موقت
     if os.path.exists(input_path):
         os.remove(input_path)
     if os.path.exists(output_path):
@@ -183,4 +137,6 @@ async def start_command(client, message):
     )
 
 # اجرا
-bot.run()
+if __name__ == "__main__":
+    print("🤖 ربات Pyrogram در حال اجرا است...")
+    bot.run()
