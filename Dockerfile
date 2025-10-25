@@ -1,10 +1,9 @@
 # استفاده از ایمیج پایه جدیدتر Debian 12 (Bookworm)
 FROM python:3.11-slim-bookworm
 
-# نصب FFmpeg
-# Bookworm به صورت پیش‌فرض شامل FFmpeg است
+# نصب FFmpeg و انکودر libx264
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg libx264 && \
     rm -rf /var/lib/apt/lists/*
 
 # تنظیم دایرکتوری کاری درون کانتینر
