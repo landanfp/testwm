@@ -4,10 +4,10 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 # --- تنظیمات ربات ---
-API_ID = 1234567  # عدد API_ID خود را وارد کنید
-API_HASH = "your_api_hash_here" # هش API خود را وارد کنید
-BOT_TOKEN = "your_bot_token_here" # توکن ربات خود را وارد کنید
-
+API_ID = '3335796'
+API_HASH = '138b992a0e672e8346d8439c3f42ea78'
+BOT_TOKEN = '5355055672:AAEE8OIOqLYxbnwesF3ki2sOsXr03Q90JiI'
+#LOG_CHANNEL = -1001792962793  # مقدار دلخواه
 # ساخت کلاینت
 bot = Client("simple_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
